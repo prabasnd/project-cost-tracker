@@ -6,7 +6,7 @@
 class SyncManager {
     constructor() {
         // IMPORTANT: Replace with your actual Google Apps Script Web App URL
-        this.scriptURL = 'https://script.google.com/macros/s/AKfycbz3uDt_pJsRon9vuaqnr-Ly5oAoETmeGEd3QWLj9ttf_CEOTs9jGSBXiKlaqlo86lSI/exec';
+        this.scriptURL = 'https://script.google.com/macros/s/AKfycbw6bZZWKLndLPck0oLiscV899-_iZwcOHD-7PkpwcPngt2lNpR2ffGDkI2IbR6dr4y2Xg/exec';
         
         this.isSyncing = false;
         this.syncInterval = null;
