@@ -1,13 +1,22 @@
 /**
- * Sync Module
- * Handles synchronization with Google Sheets via Apps Script
+ * Sync Module - SUPABASE VERSION
+ * Handles synchronization with Supabase (Google Sheets alternative)
+ * 
+ * SETUP INSTRUCTIONS:
+ * 1. Go to https://supabase.com and sign up (FREE)
+ * 2. Create a new project
+ * 3. Get your project URL and anon key from Settings > API
+ * 4. Update SUPABASE_URL and SUPABASE_KEY below
+ * 5. Run the SQL command provided in SUPABASE-SETUP.md to create table
  */
 
 class SyncManager {
     constructor() {
-        // IMPORTANT: Replace with your actual Google Apps Script Web App URL
-        this.scriptURL = 'https://script.google.com/macros/s/AKfycbw3hXA9cIdyhHNbzkW88J-AUeIpyTGWIdoI5PLfnje3rj10YZyVPTW3fnpGZbHTPOZF9A/exec';
+        // REPLACE THESE WITH YOUR SUPABASE CREDENTIALS
+        this.SUPABASE_URL = 'https://xqytacbrzaukapiqhwnr.supabase.co';
+        this.SUPABASE_KEY = 'sb_publishable_qVsOieJRzxFrRnbCAarpgQ_o4bFMy_B';
         
+        this.apiUrl = `${this.SUPABASE_URL}/rest/v1/cost_entries`;
         this.isSyncing = false;
         this.syncInterval = null;
         this.autoSyncEnabled = true;
@@ -35,7 +44,7 @@ class SyncManager {
             }
         }, this.syncIntervalTime);
 
-        console.log('Auto-sync started');
+        console.log('Auto-sync started (Supabase)');
     }
 
     /**
@@ -76,7 +85,7 @@ class SyncManager {
                 return { success: true, message: 'Nothing to sync', synced: 0 };
             }
 
-            console.log(`Syncing ${queue.length} entries...`);
+            console.log(`Syncing ${queue.length} entries to Supabase...`);
             let syncedCount = 0;
             let failedCount = 0;
 
@@ -102,7 +111,7 @@ class SyncManager {
                 }
 
                 // Small delay to avoid overwhelming the server
-                await this.delay(300);
+                await this.delay(200);
             }
 
             this.isSyncing = false;
@@ -127,46 +136,52 @@ class SyncManager {
     }
 
     /**
-     * Sync a single entry to Google Sheets
+     * Sync a single entry to Supabase
      */
     async syncEntry(entry) {
         try {
-            const response = await fetch(this.scriptURL, {
+            // Prepare data for Supabase
+            const data = {
+                id: entry.id,
+                project: entry.project,
+                cost_type: entry.costType,
+                description: entry.description || '',
+                amount: parseFloat(entry.amount),
+                payment_mode: entry.paymentMode,
+                status: entry.status,
+                entry_date: entry.date,
+                created_at: entry.timestamp,
+                synced_at: new Date().toISOString()
+            };
+
+            // Use upsert to handle both insert and update
+            const response = await fetch(this.apiUrl, {
                 method: 'POST',
-                mode: 'no-cors', // Important for Apps Script
                 headers: {
                     'Content-Type': 'application/json',
+                    'apikey': this.SUPABASE_KEY,
+                    'Authorization': `Bearer ${this.SUPABASE_KEY}`,
+                    'Prefer': 'resolution=merge-duplicates'
                 },
-                body: JSON.stringify({
-                    action: 'addRecord',
-                    data: {
-                        id: entry.id,
-                        project: entry.project,
-                        costType: entry.costType,
-                        description: entry.description || '',
-                        amount: entry.amount,
-                        paymentMode: entry.paymentMode,
-                        status: entry.status,
-                        date: entry.date,
-                        timestamp: entry.timestamp
-                    }
-                })
+                body: JSON.stringify(data)
             });
 
-            // Note: With no-cors mode, we can't read the response
-            // We assume success if no error is thrown
-            console.log('Entry synced to Google Sheets:', entry.id);
-            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || `HTTP ${response.status}`);
+            }
+
+            console.log('Entry synced to Supabase:', entry.id);
             return { success: true };
 
         } catch (error) {
-            console.error('Failed to sync entry:', error);
+            console.error('Failed to sync entry to Supabase:', error);
             return { success: false, error: error.message };
         }
     }
 
     /**
-     * Fetch records from Google Sheets (optional - for verification)
+     * Fetch records from Supabase (optional - for verification)
      */
     async fetchRecords() {
         if (!this.isOnline()) {
@@ -174,15 +189,49 @@ class SyncManager {
         }
 
         try {
-            const response = await fetch(`${this.scriptURL}?action=getRecords`, {
+            const response = await fetch(`${this.apiUrl}?select=*&order=created_at.desc`, {
                 method: 'GET',
+                headers: {
+                    'apikey': this.SUPABASE_KEY,
+                    'Authorization': `Bearer ${this.SUPABASE_KEY}`
+                }
             });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
 
             const data = await response.json();
             return { success: true, data: data };
 
         } catch (error) {
-            console.error('Failed to fetch records:', error);
+            console.error('Failed to fetch records from Supabase:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * Delete an entry from Supabase
+     */
+    async deleteFromSupabase(id) {
+        try {
+            const response = await fetch(`${this.apiUrl}?id=eq.${id}`, {
+                method: 'DELETE',
+                headers: {
+                    'apikey': this.SUPABASE_KEY,
+                    'Authorization': `Bearer ${this.SUPABASE_KEY}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            console.log('Entry deleted from Supabase:', id);
+            return { success: true };
+
+        } catch (error) {
+            console.error('Failed to delete from Supabase:', error);
             return { success: false, error: error.message };
         }
     }
@@ -226,7 +275,7 @@ class SyncManager {
     }
 
     /**
-     * Test connection to Google Sheets
+     * Test connection to Supabase
      */
     async testConnection() {
         if (!this.isOnline()) {
@@ -234,18 +283,20 @@ class SyncManager {
         }
 
         try {
-            const response = await fetch(this.scriptURL, {
-                method: 'POST',
-                mode: 'no-cors',
+            const response = await fetch(this.apiUrl + '?limit=1', {
+                method: 'GET',
                 headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    action: 'ping'
-                })
+                    'apikey': this.SUPABASE_KEY,
+                    'Authorization': `Bearer ${this.SUPABASE_KEY}`
+                }
             });
 
-            return { success: true, message: 'Connection successful' };
+            if (response.ok) {
+                return { success: true, message: 'Connection to Supabase successful!' };
+            } else {
+                const error = await response.json();
+                return { success: false, message: error.message || 'Connection failed' };
+            }
 
         } catch (error) {
             console.error('Connection test failed:', error);
